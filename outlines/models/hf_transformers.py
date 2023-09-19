@@ -1,19 +1,25 @@
 """Integration with Hugging Face's `transformers` library."""
+import builtins
 import functools
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Union
 
 import numpy as np
+from dataclasses import dataclass
 
 import outlines
 from outlines.text.masks import create_float_mask, create_int_mask
 
 if TYPE_CHECKING:
     import torch
-    from transformers import PreTrainedTokenizerBase
+    from transformers import PreTrainedTokenizerBase, PreTrainedModel, Pipeline
 
+@dataclass
+class PreloadedModel:
+    model: "PreTrainedModel"
+    tokenizer: "PreTrainedTokenizerBase"
 
 def HuggingFaceCompletion(
-    model_name: str,
+    model_name: Union[str, Tuple["PreTrainedModel", "PreTrainedTokenizerBase"]],
     max_tokens: Optional[int] = None,
     temperature: Optional[float] = None,
 ) -> Callable:
@@ -50,6 +56,14 @@ def HuggingFaceCompletion(
     if temperature is None:
         temperature = 1.0
 
+    if isinstance(model_name, tuple):
+        # vectorize broadcasts the function, so we need to wrap the tuple in a non-iterable class
+        model_name = PreloadedModel(*model_name)
+    elif not isinstance(model_name, str):
+        raise ValueError(
+            f"Expected a model name string or a tuple of (model, tokenizer), got {type(model_name)}"
+        )
+
     def call(
         prompt: Union[str, List[str]],
         *,
@@ -77,7 +91,7 @@ def HuggingFaceCompletion(
 
 @functools.partial(outlines.vectorize, signature="(),(m),(),(),(),(i),(j),()->(m,s)")
 def call_model_generate_method(
-    model_name: str,
+    model_name: Union[str, "PreloadedModel"],
     prompt: str,
     max_tokens: int,
     temperature: float,
@@ -92,10 +106,29 @@ def call_model_generate_method(
     # `generate` does not accept NumPy arrays
     prompt = list(prompt)
 
-    tokenizer = AutoTokenizer.from_pretrained(model_name, padding_size="left")
-    model = AutoModelForCausalLM.from_pretrained(model_name)
+    tokenizer: PreTrainedTokenizerBase
+    model: PreTrainedModel
+    if isinstance(model_name, str):
+        tokenizer = AutoTokenizer.from_pretrained(model_name)
+        model = AutoModelForCausalLM.from_pretrained(model_name)
 
-    tokenizer.pad_token = tokenizer.eos_token
+        if torch.cuda.is_available():
+            model = model.to("cuda")
+        # TODO: MPS is broken and fails tests, need to investigate
+        # elif torch.backends.mps.is_available():
+        #     model = model.to("mps")
+    elif isinstance(model_name, PreloadedModel):
+        model, tokenizer = model_name.model, model_name.tokenizer
+    else:
+        raise ValueError(
+            f"Expected a model name string or a tuple of (model, tokenizer), got {builtins.type(model_name)}"
+        )
+
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    # TODO: This is a hack, assess whether it may have side effects for some models
+    tokenizer.padding_side = "left"
     prompt_tokens = tokenizer(prompt, return_tensors="pt", padding=True)
 
     logit_processors: Optional[List[Callable]] = None
@@ -140,12 +173,7 @@ def call_model_generate_method(
         logit_processors = [logit_processor]
         stopping_criteria = [stopping_criterion]
 
-    if torch.cuda.is_available():
-        model = model.to("cuda")
-        prompt_tokens = prompt_tokens.to("cuda")
-    elif torch.backends.mps.is_available():
-        model = model.to("mps")
-        prompt_tokens = prompt_tokens.to("mps")
+    prompt_tokens.to(model.device)
 
     returned_tokens = model.generate(
         **prompt_tokens,

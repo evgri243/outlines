@@ -1,12 +1,18 @@
 import numpy as np
 import pytest
 
+from transformers import AutoTokenizer, AutoModelForCausalLM
+
 from outlines.models.hf_transformers import HuggingFaceCompletion
 
-TEST_MODEL = "hf-internal-testing/tiny-random-GPTJForCausalLM"
+TEST_MODEL_NAME = "hf-internal-testing/tiny-random-GPTJForCausalLM"
+TEST_MODEL_TUPLE = (
+    AutoModelForCausalLM.from_pretrained(TEST_MODEL_NAME), AutoTokenizer.from_pretrained(TEST_MODEL_NAME)
+)
 
 
-def test_samples():
+@pytest.mark.parametrize("TEST_MODEL", [TEST_MODEL_NAME, TEST_MODEL_TUPLE])
+def test_samples(TEST_MODEL):
     model = HuggingFaceCompletion(TEST_MODEL, max_tokens=10)
 
     answer = model("test", samples=1)
@@ -20,7 +26,8 @@ def test_samples():
     assert len(answers) == 3
 
 
-def test_prompt_array():
+@pytest.mark.parametrize("TEST_MODEL", [TEST_MODEL_NAME, TEST_MODEL_TUPLE])
+def test_prompt_array(TEST_MODEL):
     model = HuggingFaceCompletion(TEST_MODEL, max_tokens=10)
     prompts = [["Hello", "Bonjour"], ["Ciao", "Hallo"]]
     answers = model(prompts)
@@ -32,7 +39,8 @@ def test_prompt_array():
     assert answers.shape == (2, 2, 5)
 
 
-def test_type_int():
+@pytest.mark.parametrize("TEST_MODEL", [TEST_MODEL_NAME, TEST_MODEL_TUPLE])
+def test_type_int(TEST_MODEL):
     model = HuggingFaceCompletion(TEST_MODEL, max_tokens=10)
     answer = model("test", type="int")
     int(answer)
@@ -42,7 +50,8 @@ def test_type_int():
         int(answer)
 
 
-def test_type_float():
+@pytest.mark.parametrize("TEST_MODEL", [TEST_MODEL_NAME, TEST_MODEL_TUPLE])
+def test_type_float(TEST_MODEL):
     model = HuggingFaceCompletion(TEST_MODEL, max_tokens=10)
     answer = model("test", type="float")
     float(answer)
@@ -52,14 +61,16 @@ def test_type_float():
         float(answer)
 
 
-def test_incompatible_constraints():
+@pytest.mark.parametrize("TEST_MODEL", [TEST_MODEL_NAME, TEST_MODEL_TUPLE])
+def test_incompatible_constraints(TEST_MODEL):
     model = HuggingFaceCompletion(TEST_MODEL, max_tokens=10)
 
     with pytest.raises(ValueError):
         model("test", type="float", is_in=["test"])
 
 
-def test_choices():
+@pytest.mark.parametrize("TEST_MODEL", [TEST_MODEL_NAME, TEST_MODEL_TUPLE])
+def test_choices(TEST_MODEL):
     model = HuggingFaceCompletion(TEST_MODEL, max_tokens=50)
 
     choices = ["a", "and a long sequence", "with\n line break"]
@@ -71,7 +82,8 @@ def test_choices():
         assert answer in choices
 
 
-def test_stop():
+@pytest.mark.parametrize("TEST_MODEL", [TEST_MODEL_NAME, TEST_MODEL_TUPLE])
+def test_stop(TEST_MODEL):
     model = HuggingFaceCompletion(TEST_MODEL, max_tokens=1000)
 
     stop = [" ", "\n"]
@@ -86,19 +98,22 @@ def test_stop():
 
 
 @pytest.mark.xfail
-def test_type_multiple_samples():
+@pytest.mark.parametrize("TEST_MODEL", [TEST_MODEL_NAME, TEST_MODEL_TUPLE])
+def test_type_multiple_samples(TEST_MODEL):
     model = HuggingFaceCompletion(TEST_MODEL, max_tokens=10)
     answer = model("test", type="int", samples=2)
     int(answer)
 
 
 @pytest.mark.xfail
-def test_is_in_multiple_samples():
+@pytest.mark.parametrize("TEST_MODEL", [TEST_MODEL_NAME, TEST_MODEL_TUPLE])
+def test_is_in_multiple_samples(TEST_MODEL):
     model = HuggingFaceCompletion(TEST_MODEL, max_tokens=10)
     model("test", is_in=["a", "b"], samples=2)
 
 
 @pytest.mark.xfail
-def test_stop_at_multiple_samples():
+@pytest.mark.parametrize("TEST_MODEL", [TEST_MODEL_NAME, TEST_MODEL_TUPLE])
+def test_stop_at_multiple_samples(TEST_MODEL):
     model = HuggingFaceCompletion(TEST_MODEL, max_tokens=10)
     model("test", stop_at=[" "], samples=2)

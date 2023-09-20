@@ -1,14 +1,19 @@
 import pytest
 import torch
+from transformers import AutoModelForCausalLM, AutoTokenizer
 from transformers.models.gpt2 import GPT2TokenizerFast
 
-from outlines.models.transformers import TransformersTokenizer, transformers
+from outlines.models.transformers import TokenizerWrapper, transformers, TransformersTokenizer, Transformers, \
+    TransformerWrapper
 
-TEST_MODEL = "hf-internal-testing/tiny-random-GPTJForCausalLM"
+TEST_MODEL_NAME = "hf-internal-testing/tiny-random-GPTJForCausalLM"
+TEST_TOKENIZER = AutoTokenizer.from_pretrained(TEST_MODEL_NAME)
+TEST_MODEL = AutoModelForCausalLM.from_pretrained(TEST_MODEL_NAME)
 
 
-def test_tokenizer():
-    tokenizer = TransformersTokenizer(TEST_MODEL)
+@pytest.mark.parametrize("TEST_TOKENIZER", [TEST_MODEL_NAME, TEST_TOKENIZER])
+def test_tokenizer(TEST_TOKENIZER):
+    tokenizer = TokenizerWrapper.from_pretrained(TEST_TOKENIZER)
     assert tokenizer.eos_token_id == 0
     assert tokenizer.pad_token_id == 0
     assert isinstance(tokenizer.tokenizer, GPT2TokenizerFast)
@@ -25,9 +30,10 @@ def test_tokenizer():
     assert isinstance(token_ids, torch.LongTensor)
     assert token_ids.shape == attention_mask.shape
 
-    token_ids, attention_mask = tokenizer.encode(["Test", "A long sentence"])
+    token_ids, attention_mask = tokenizer.encode(["A long", "A long sentence"])
     assert token_ids.shape == attention_mask.shape
-    assert attention_mask[0][0] == tokenizer.pad_token_id
+    assert token_ids[0][0] == tokenizer.pad_token_id
+    assert attention_mask[0][0] == 0
 
     text = tokenizer.decode(torch.tensor([[0, 1, 2]]))
     isinstance(text, str)
@@ -39,7 +45,7 @@ def test_tokenizer():
 
 
 def test_llama_tokenizer():
-    tokenizer = TransformersTokenizer("hf-internal-testing/llama-tokenizer")
+    tokenizer = TokenizerWrapper.from_pretrained("hf-internal-testing/llama-tokenizer")
 
     # Broken
     assert tokenizer.tokenizer.convert_tokens_to_string(["▁baz"]) == "baz"
@@ -52,12 +58,20 @@ def test_llama_tokenizer():
     assert tokenizer.convert_token_to_string("▁▁▁") == "   "
 
 
-def test_model():
-    with pytest.raises(ValueError, match="When passing device_map as a string"):
-        transformers(TEST_MODEL, device="non_existent")
+@pytest.mark.parametrize("TEST_MODEL,TEST_TOKENIZER", [
+    (TEST_MODEL_NAME, None),
+    (TEST_MODEL, None),
+    (TEST_MODEL, TEST_MODEL_NAME),
+    (TEST_MODEL, TEST_TOKENIZER)
+])
+def test_model(TEST_MODEL, TEST_TOKENIZER):
+    with pytest.raises((ValueError, RuntimeError),
+                       match="When passing device_map as a string|Invalid device string"
+                       ):
+        transformers(TEST_MODEL, tokenizer_or_name=TEST_TOKENIZER, device="non existent device")
 
-    model = transformers(TEST_MODEL, device="cpu")
-    assert isinstance(model.tokenizer, TransformersTokenizer)
+    model = transformers(TEST_MODEL, tokenizer_or_name=TEST_TOKENIZER, device="cpu")
+    assert isinstance(model.tokenizer, TokenizerWrapper)
     assert model.device.type == "cpu"
 
     input_ids = torch.tensor([[0, 1, 2]])
@@ -78,3 +92,12 @@ def test_model():
     assert logits.shape[0] == 2
     assert logits.shape[1] == 2
     assert torch.equal(logits[0][0], logits[1][1])
+
+def test_legacy_loaders():
+    legacy_tokenizer = TransformersTokenizer(TEST_MODEL_NAME)
+    assert isinstance(legacy_tokenizer, TransformersTokenizer)
+    assert isinstance(legacy_tokenizer, TokenizerWrapper)
+
+    legacy_model = Transformers(TEST_MODEL, legacy_tokenizer)
+    assert isinstance(legacy_model, Transformers)
+    assert isinstance(legacy_model, TransformerWrapper)

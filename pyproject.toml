@@ -4,10 +4,10 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "outlines"
-authors= [{name = "Outlines Developers"}]
+authors = [{ name = "Outlines Developers" }]
 description = "Probabilistic Generative Model Programming"
 requires-python = ">=3.10"
-keywords=[
+keywords = [
     "normal computing",
     "machine learning",
     "deep learning",
@@ -24,17 +24,17 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-   "interegular",
-   "jinja2",
-   "lark",
-   "numpy",
-   "pillow",
-   "perscache",
-   "pydantic>=2.0",
-   "scipy",
-   "tenacity",
-   "torch",
-]
+    "interegular",
+    "jinja2",
+    "lark",
+    "numpy",
+    "pillow",
+    "perscache",
+    "pydantic",
+    "scipy",
+    "tenacity",
+    "torch",
+    "semver"]
 dynamic = ["version"]
 
 [project.optional-dependencies]
@@ -56,7 +56,7 @@ documentation = "https://outlines-dev.github.io/outlines/"
 repository = "https://github.com/outlines-dev/outlines"
 
 [project.readme]
-file="README.md"
+file = "README.md"
 content-type = "text/markdown"
 
 [tool.setuptools]
@@ -71,11 +71,10 @@ filterwarnings = [
     "error",
     "ignore::FutureWarning:transformers.*",
     "ignore::FutureWarning:diffusers.*",
-    "ignore::UserWarning:torch.cuda.*"
-]
+    "ignore::UserWarning:torch.cuda.*"]
 
 [tool.mypy]
-exclude=["examples"]
+exclude = ["examples"]
 
 [[tool.mypy.overrides]]
 module = [

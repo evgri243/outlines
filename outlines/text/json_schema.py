@@ -3,6 +3,9 @@ import json
 import re
 from typing import Dict
 
+import pydantic
+import semver
+
 STRING_INNER = r'(?:[^"\\\x00-\x1f\x7f-\x9f]|\\.)'
 STRING = f'"{STRING_INNER}*"'
 INTEGER = r"(0|[1-9][0-9]*)"
@@ -75,9 +78,11 @@ def build_schedule_from_schema(schema: str):
 
     # Find object definitions in the schema, if any
     definitions = {}
-    if "$defs" in schema:
-        for definition, annotation in schema["$defs"].items():
-            definitions[f"#/$defs/{definition}"] = annotation
+    definitions_key = "$defs" if semver.Version.parse(pydantic.VERSION) >= "2.0.0" \
+        else "definitions"
+    if definitions_key in schema:
+        for definition, annotation in schema[definitions_key].items():
+            definitions[f"#/{definitions_key}/{definition}"] = annotation
 
     schema = expand_json_schema(schema, definitions)
     schedule = build_schedule_from_instance(schema)

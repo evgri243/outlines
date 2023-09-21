@@ -3,7 +3,9 @@ import re
 from enum import Enum
 from typing import List, Optional, Union
 
+import pydantic
 import pytest
+import semver
 from pydantic import BaseModel, constr
 
 from outlines.text.json_schema import (
@@ -27,7 +29,8 @@ def test_pydantic_basic():
         value: float
         is_true: bool
 
-    schema = json.dumps(User.model_json_schema())
+    schema = json.dumps(User.model_json_schema() if semver.Version.parse(pydantic.VERSION) >= "2.0.0"
+                        else User.schema())
     schedule = build_schedule_from_schema(schema)
     assert schedule == [
         '\\{[\\n ]*"user_id"[\\n ]*:[\\n ]*',
@@ -50,11 +53,14 @@ def test_pydantic_optional():
     class Foo(BaseModel):
         bar: Optional[str]
 
-    schema = json.dumps(Foo.model_json_schema())
+    schema = json.dumps(Foo.model_json_schema() if semver.Version.parse(pydantic.VERSION) >= "2.0.0"
+                        else Foo.schema())
     schedule = build_schedule_from_schema(schema)
     assert schedule == [
         '\\{[\\n ]*"bar"[\\n ]*:[\\n ]*',
-        {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Bar"},
+        {"anyOf": [{"type": "string"}, {"type": "null"}], "title": "Bar"}
+        if semver.Version.parse(pydantic.VERSION) >= "2.0.0"
+        else {"title": "Bar", "type": "string"},
         "[\\n ]*\\}",
     ]
 
@@ -64,7 +70,8 @@ def test_pydantic_array():
         user_id: int
         value: List[float]
 
-    schema = json.dumps(User.model_json_schema())
+    schema = json.dumps(User.model_json_schema() if semver.Version.parse(pydantic.VERSION) >= "2.0.0"
+                        else User.schema())
     schedule = build_schedule_from_schema(schema)
     assert schedule == [
         '\\{[\\n ]*"user_id"[\\n ]*:[\\n ]*',
@@ -85,7 +92,8 @@ def test_pydantic_enum():
         user_id: int
         name: Name
 
-    schema = json.dumps(User.model_json_schema())
+    schema = json.dumps(User.model_json_schema() if semver.Version.parse(pydantic.VERSION) >= "2.0.0"
+                        else User.schema())
     schedule = build_schedule_from_schema(schema)
     assert schedule == [
         '\\{[\\n ]*"user_id"[\\n ]*:[\\n ]*',
@@ -93,6 +101,12 @@ def test_pydantic_enum():
         '[\\n ]*,[\\n ]*"name"[\\n ]*:[\\n ]*',
         {
             "title": "Name",
+            "enum": ["John", "Marc", "Michel"],
+            "type": "string",
+        } if semver.Version.parse(pydantic.VERSION) >= "2.0.0"
+        else {
+            "title": "Name",
+            "description": "An enumeration.",
             "enum": ["John", "Marc", "Michel"],
             "type": "string",
         },
@@ -119,7 +133,8 @@ def test_pydantic_nested():
         bars: Bar
 
     # We need to a recursive function to parse nested schemas
-    schema = json.dumps(Spam.model_json_schema())
+    schema = json.dumps(Spam.model_json_schema() if semver.Version.parse(pydantic.VERSION) >= "2.0.0"
+                        else Spam.schema())
     schedule = build_schedule_from_schema(schema)
     assert schedule == [
         '\\{[\\n ]*"foo"[\\n ]*:[\\n ]*\\{[\\n ]*"count"[\\n ]*:[\\n ]*',
@@ -142,7 +157,8 @@ def test_pydantic_list_object():
         foo: List[Foo]
 
     # We need to a recursive function to parse nested schemas
-    schema = json.dumps(Spam.model_json_schema())
+    schema = json.dumps(Spam.model_json_schema() if semver.Version.parse(pydantic.VERSION) >= "2.0.0"
+                        else Spam.schema())
     schedule = build_schedule_from_schema(schema)
     assert schedule == [
         '\\{[\\n ]*"foo"[\\n ]*:[\\n ]*',
@@ -166,7 +182,8 @@ def test_pydantic_union():
         foo: int
         bar: Union[float, str]
 
-    schema = json.dumps(Spam.model_json_schema())
+    schema = json.dumps(Spam.model_json_schema() if semver.Version.parse(pydantic.VERSION) >= "2.0.0"
+                        else Spam.schema())
     schedule = build_schedule_from_schema(schema)
     assert schedule == [
         '\\{[\\n ]*"foo"[\\n ]*:[\\n ]*',
@@ -253,101 +270,101 @@ def test_match_number(pattern, does_match):
     "step,regex,examples",
     [
         (
-            {"title": "Foo", "type": "string"},
-            STRING,
-            [("unquotedstring", False), ('"quoted_string"', True)],
+                {"title": "Foo", "type": "string"},
+                STRING,
+                [("unquotedstring", False), ('"quoted_string"', True)],
         ),
         (
-            {"title": "Foo", "type": "string", "maxLength": 3},
-            f'"{STRING_INNER}{{,3}}"',
-            [('"ab"', True), ('"a""', False), ('"abcd"', False)],
+                {"title": "Foo", "type": "string", "maxLength": 3},
+                f'"{STRING_INNER}{{,3}}"',
+                [('"ab"', True), ('"a""', False), ('"abcd"', False)],
         ),
         (
-            {"title": "Foo", "type": "string", "minLength": 3},
-            f'"{STRING_INNER}{{3,}}"',
-            [('"ab"', False), ('"abcd"', True), ('"abc""', False)],
+                {"title": "Foo", "type": "string", "minLength": 3},
+                f'"{STRING_INNER}{{3,}}"',
+                [('"ab"', False), ('"abcd"', True), ('"abc""', False)],
         ),
         (
-            {"title": "Foo", "type": "boolean"},
-            BOOLEAN,
-            [
-                ("true", True),
-                ("false", True),
-                ("null", False),
-                ("0", False),
-            ],
+                {"title": "Foo", "type": "boolean"},
+                BOOLEAN,
+                [
+                    ("true", True),
+                    ("false", True),
+                    ("null", False),
+                    ("0", False),
+                ],
         ),
         (
-            {"title": "Foo", "type": "null"},
-            NULL,
-            [
-                ("null", True),
-                ("true", False),
-                ("0", False),
-            ],
+                {"title": "Foo", "type": "null"},
+                NULL,
+                [
+                    ("null", True),
+                    ("true", False),
+                    ("0", False),
+                ],
         ),
         (
-            {"title": "Foo", "anyOf": [{"type": "string"}, {"type": "number"}]},
-            f"({STRING}|{NUMBER})",
-            [
-                ('"string"', True),
-                ('"st"ring"', False),
-                ("1000", True),
-                ("true", False),
-            ],
+                {"title": "Foo", "anyOf": [{"type": "string"}, {"type": "number"}]},
+                f"({STRING}|{NUMBER})",
+                [
+                    ('"string"', True),
+                    ('"st"ring"', False),
+                    ("1000", True),
+                    ("true", False),
+                ],
         ),
         (
-            {"title": "Foo", "enum": ["Marc", "Jean"], "type": "string"},
-            '("Marc"|"Jean")',
-            [('"Marc"', True), ('"Jean"', True), ('"John"', False)],
+                {"title": "Foo", "enum": ["Marc", "Jean"], "type": "string"},
+                '("Marc"|"Jean")',
+                [('"Marc"', True), ('"Jean"', True), ('"John"', False)],
         ),
         (
-            {"title": "Foo", "enum": [".*", r"\s*"], "type": "string"},
-            r'("\.\*"|"\\s\*")',
-            [('".*"', True), (r'"\s*"', True), (r'"\.\*"', False)],
+                {"title": "Foo", "enum": [".*", r"\s*"], "type": "string"},
+                r'("\.\*"|"\\s\*")',
+                [('".*"', True), (r'"\s*"', True), (r'"\.\*"', False)],
         ),
         (
-            {"title": "Foo", "enum": [0, 1], "type": "integer"},
-            "(0|1)",
-            [("0", True), ("1", True), ("a", False)],
+                {"title": "Foo", "enum": [0, 1], "type": "integer"},
+                "(0|1)",
+                [("0", True), ("1", True), ("a", False)],
         ),
         (
-            {
-                "title": "Foo",
-                "type": "object",
-                "properties": {"count": {"title": "Count", "type": "integer"}},
-            },
-            '\\{[\\n ]*"count"[\\n ]*:[\\n ]*(0|[1-9][0-9]*)[\\n ]*\\}',
-            [('{\n  "count": 100\n}', True)],
-        ),
-        (
-            {"title": "Foo", "type": "array", "items": {"type": "number"}},
-            rf"\[({NUMBER})(,({NUMBER}))*\]",
-            [("[1e+9,1.3]", True)],
-        ),
-        (
-            {
-                "title": "Foo",
-                "type": "array",
-                "items": {"anyOf": [{"type": "boolean"}, {"type": "null"}]},
-            },
-            r"\[(((true|false)|null))(,(((true|false)|null)))*\]",
-            [("[true,null,false]", True)],
-        ),
-        (
-            {
-                "title": "Bar",
-                "type": "object",
-                "properties": {
-                    "fuzz": {
-                        "title": "Foo",
-                        "type": "object",
-                        "properties": {"spam": {"title": "Spam", "type": "integer"}},
-                    }
+                {
+                    "title": "Foo",
+                    "type": "object",
+                    "properties": {"count": {"title": "Count", "type": "integer"}},
                 },
-            },
-            f'\\{{[\\n ]*"fuzz"[\\n ]*:[\\n ]*\\{{[\\n ]*"spam"[\\n ]*:[\\n ]*{INTEGER}[\\n ]*\\}}[\\n ]*\\}}',
-            [('{\n  "fuzz": {\n    "spam": 100\n  }\n}', True)],
+                '\\{[\\n ]*"count"[\\n ]*:[\\n ]*(0|[1-9][0-9]*)[\\n ]*\\}',
+                [('{\n  "count": 100\n}', True)],
+        ),
+        (
+                {"title": "Foo", "type": "array", "items": {"type": "number"}},
+                rf"\[({NUMBER})(,({NUMBER}))*\]",
+                [("[1e+9,1.3]", True)],
+        ),
+        (
+                {
+                    "title": "Foo",
+                    "type": "array",
+                    "items": {"anyOf": [{"type": "boolean"}, {"type": "null"}]},
+                },
+                r"\[(((true|false)|null))(,(((true|false)|null)))*\]",
+                [("[true,null,false]", True)],
+        ),
+        (
+                {
+                    "title": "Bar",
+                    "type": "object",
+                    "properties": {
+                        "fuzz": {
+                            "title": "Foo",
+                            "type": "object",
+                            "properties": {"spam": {"title": "Spam", "type": "integer"}},
+                        }
+                    },
+                },
+                f'\\{{[\\n ]*"fuzz"[\\n ]*:[\\n ]*\\{{[\\n ]*"spam"[\\n ]*:[\\n ]*{INTEGER}[\\n ]*\\}}[\\n ]*\\}}',
+                [('{\n  "fuzz": {\n    "spam": 100\n  }\n}', True)],
         ),
     ],
 )

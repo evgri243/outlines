@@ -4,16 +4,14 @@ from json import dumps
 from typing import List, Optional, Tuple, Union
 
 import interegular
+import pydantic
+import semver
 import torch
 from pydantic import BaseModel
 
 from outlines.text.generate.continuation import Continuation
 from outlines.text.json_schema import build_regex_from_schema
-from outlines.text.parsing import (
-    find_partial_matches,
-    make_deterministic_fsm,
-    map_partial_states_to_vocab,
-)
+from outlines.text.parsing import (find_partial_matches, make_deterministic_fsm, map_partial_states_to_vocab, )
 
 
 class Regex(Continuation):
@@ -33,10 +31,8 @@ class Regex(Continuation):
         super().__init__(model, max_tokens)
 
         vocabulary = model.tokenizer.vocabulary
-        sorted_vocabulary = [
-            model.tokenizer.convert_token_to_string(k)
-            for k, v in sorted(vocabulary.items(), key=lambda kv: kv[1])
-        ]
+        sorted_vocabulary = [model.tokenizer.convert_token_to_string(k) for k, v in
+                             sorted(vocabulary.items(), key=lambda kv: kv[1])]
 
         regex_pattern = interegular.parse_pattern(regex_string)
         self.regex_fsm, _ = make_deterministic_fsm(regex_pattern.to_fsm().reduce())
@@ -46,12 +42,9 @@ class Regex(Continuation):
                 return False
             return True
 
-        pstate_to_vocab, paths = map_partial_states_to_vocab(
-            list(sorted_vocabulary),
-            {"REGEX": self.regex_fsm},
-            partial_match_filter,
-            final_state_string=model.tokenizer.eos_token,
-        )
+        pstate_to_vocab, paths = map_partial_states_to_vocab(list(sorted_vocabulary), {"REGEX": self.regex_fsm},
+                                                             partial_match_filter,
+                                                             final_state_string=model.tokenizer.eos_token, )
 
         # Check whether a terminal path (from the initial state of the FSM to
         # one of its terminal states) exists, raise an exception otherwise.
@@ -65,9 +58,7 @@ class Regex(Continuation):
                     queue.append(prev_state)
 
         if traversed_states.intersection(self.regex_fsm.finals) == set():
-            raise ValueError(
-                "The vocabulary does not allow us to build a sequence that matches the input regex"
-            )
+            raise ValueError("The vocabulary does not allow us to build a sequence that matches the input regex")
 
         self.pstate_to_vocab = {k: list(v) for k, v in pstate_to_vocab.items()}
         # These tuples are comprised of the FSM name, last FSM state, and
@@ -75,9 +66,7 @@ class Regex(Continuation):
         # When an EOS is observed, the last FSM state becomes `-1`.
         self.pstates: List[Tuple[str, int, int]] = []
 
-    def create_proposal(
-        self, generated_token_ids: torch.LongTensor, logits: torch.DoubleTensor
-    ) -> torch.DoubleTensor:
+    def create_proposal(self, generated_token_ids: torch.LongTensor, logits: torch.DoubleTensor) -> torch.DoubleTensor:
         """Modify the next-token logits so that only valid tokens can be generated.
 
         Parameters
@@ -90,23 +79,15 @@ class Regex(Continuation):
         """
 
         if len(self.pstates) == 0:
-            self.pstates = [
-                ("REGEX", self.regex_fsm.initial, 0)
-                for _ in range(generated_token_ids.shape[0])
-            ]
+            self.pstates = [("REGEX", self.regex_fsm.initial, 0) for _ in range(generated_token_ids.shape[0])]
 
         if generated_token_ids.shape[-1] > 0:
             new_pstates = []
-            for token_seq, (_, last_fsm_state, last_token_idx) in zip(
-                generated_token_ids,
-                self.pstates,
-            ):
+            for token_seq, (_, last_fsm_state, last_token_idx) in zip(generated_token_ids, self.pstates, ):
                 # Get the tokens we haven't already processed,
                 readable_tokens = token_seq[last_token_idx:]
                 # excluding any EOS tokens.
-                not_eos_mask = [
-                    tk != self.model.tokenizer.eos_token_id for tk in readable_tokens
-                ]
+                not_eos_mask = [tk != self.model.tokenizer.eos_token_id for tk in readable_tokens]
                 readable_tokens = readable_tokens[not_eos_mask]
                 if len(readable_tokens) > 0:
                     # If we previously ended with an EOS, we shouldn't be
@@ -115,16 +96,9 @@ class Regex(Continuation):
 
                     sequence = self.model.tokenizer.decode(readable_tokens)
 
-                    ((_, state_seq),) = find_partial_matches(
-                        self.regex_fsm,
-                        "".join(sequence),
-                        start_state=last_fsm_state,
-                    )
-                    pstate = (
-                        "REGEX",
-                        state_seq[-1],
-                        last_token_idx + len(sequence),
-                    )
+                    ((_, state_seq),) = find_partial_matches(self.regex_fsm, "".join(sequence),
+                                                             start_state=last_fsm_state, )
+                    pstate = ("REGEX", state_seq[-1], last_token_idx + len(sequence),)
                 else:
                     pstate = ("REGEX", -1, last_token_idx)
 
@@ -225,8 +199,10 @@ def json(model, schema: Union[str, BaseModel], max_tokens: Optional[int] = None)
         The maximum number of tokens to generate.
 
     """
-    if isinstance(schema, type(BaseModel)):
-        schema = dumps(schema.model_json_schema())
+    if isinstance(schema, (type(BaseModel), BaseModel)):
+        schema = dumps(schema.model_json_schema() if semver.Version.parse(pydantic.VERSION) >= "2.0.0"
+                       else schema.schema()
+                       )
 
     regex_str = build_regex_from_schema(schema)
 

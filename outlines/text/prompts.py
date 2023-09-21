@@ -6,6 +6,8 @@ import textwrap
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, cast
 
+import pydantic
+import semver
 from jinja2 import Environment, StrictUndefined
 from pydantic import BaseModel
 
@@ -289,7 +291,7 @@ def get_schema_pydantic(model: type[BaseModel]):
     if not type(model) == type(BaseModel):
         raise TypeError("The `schema` filter only applies to Pydantic models.")
 
-    if hasattr(model, "model_json_schema"):
+    if semver.Version.parse(pydantic.VERSION) >= "2.0.0":
         def_key = "$defs"
         raw_schema = model.model_json_schema()
     else:  # pragma: no cover

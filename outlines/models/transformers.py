@@ -208,7 +208,8 @@ class TokenizerWrapper:
             class CodeLlamaTokenizerFast:  # type: ignore
                 pass
 
-        return isinstance(self.tokenizer, (LlamaTokenizer, LlamaTokenizerFast, CodeLlamaTokenizer, CodeLlamaTokenizerFast))
+        return isinstance(self.tokenizer,
+                          (LlamaTokenizer, LlamaTokenizerFast, CodeLlamaTokenizer, CodeLlamaTokenizerFast))
 
     @contextmanager
     def suppress_tokenizer_warnings(self):
@@ -219,6 +220,7 @@ class TokenizerWrapper:
         yield
 
         self.tokenizer.verbose = orig_verbose
+
 
 def transformers(model_or_name: Union[str, "PreTrainedModel"], *,
                  tokenizer_or_name: Optional[Union[str, "PreTrainedTokenizerBase"]] = None,
@@ -259,13 +261,24 @@ def transformers(model_or_name: Union[str, "PreTrainedModel"], *,
         class PeftModel:
             pass
 
+    try:
+        from torch.nn import Module as TorchModule
+    except ImportError:
+        class TorchModule:
+            pass
+
     if isinstance(model_or_name, str):
         if model_kwargs is None:
             model_kwargs = dict()
         if device is not None:
             model_kwargs["device_map"] = device
         model = AutoModelForCausalLM.from_pretrained(model_or_name, **(model_kwargs or {}))
-    elif isinstance(model_or_name, (PreTrainedModel, PeftModel)):
+    elif isinstance(model_or_name, (PreTrainedModel, PeftModel, TorchModule)):
+        if isinstance(model_or_name, TorchModule):
+            logging.warning(
+                "Using a `torch.nn.Module` instance as a model is experimental and may not work. "
+                "Make sure the model has a compatible interface to PretrainedModel.generate()."
+            )
         model = model_or_name
         if device is not None:
             model = model.to(device)

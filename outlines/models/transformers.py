@@ -253,19 +253,25 @@ def transformers(model_or_name: Union[str, "PreTrainedModel"], *,
     except ImportError:
         raise ImportError("The `transformers` library needs to be installed in order to use `transformers` models.")
 
+    try:
+        from peft import PeftModel
+    except ImportError:
+        class PeftModel:
+            pass
+
     if isinstance(model_or_name, str):
         if model_kwargs is None:
             model_kwargs = dict()
         if device is not None:
             model_kwargs["device_map"] = device
         model = AutoModelForCausalLM.from_pretrained(model_or_name, **(model_kwargs or {}))
-    elif isinstance(model_or_name, PreTrainedModel):
+    elif isinstance(model_or_name, (PreTrainedModel, PeftModel)):
         model = model_or_name
         if device is not None:
             model = model.to(device)
     else:
-        raise TypeError("`model_or_name` must be a string or a `transformers.PreTrainedModel` instance, "
-                        f"{type(model_or_name)} found.")
+        raise TypeError("`model_or_name` must be a string, a `transformers.PreTrainedModel` "
+                        f"or a `peft.PeftModel` instance, {type(model_or_name)} found.")
 
     tokenizer = TokenizerWrapper.from_pretrained(tokenizer_or_name or model.name_or_path, **(tokenizer_kwargs or {}))
 

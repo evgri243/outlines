@@ -159,8 +159,14 @@ class TokenizerWrapper:
         output = self.tokenizer(prompt, **kwargs)
         return output["input_ids"], output["attention_mask"]
 
-    def decode(self, token_ids: torch.LongTensor, **kwargs) -> List[str]:
+    def decode(self, token_ids: Union[torch.LongTensor, List[int]], keep_leading_space_if_llama=False, **kwargs) -> List[str]:
         text = self.tokenizer.batch_decode(token_ids, **kwargs)
+
+        if self._is_llama_tokenizer and keep_leading_space_if_llama and len(token_ids) > 0:
+            first_token = self.tokenizer.convert_ids_to_tokens([token_ids[0]])[0]
+            if first_token.startswith(SPIECE_UNDERLINE) or first_token == "<0x20>":
+                text[0] = " " + text[0]
+
         return text
 
     def convert_token_to_string(self, token: str) -> str:

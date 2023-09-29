@@ -94,7 +94,10 @@ class Regex(Continuation):
                     # getting/sampling any more non-EOS tokens.
                     assert last_fsm_state > -1
 
-                    sequence = self.model.tokenizer.decode(readable_tokens)
+                    sequence = self.model.tokenizer.decode(
+                        readable_tokens,
+                        keep_leading_space_if_llama=last_token_idx > 0
+                    )
 
                     ((_, state_seq),) = find_partial_matches(self.regex_fsm, "".join(sequence),
                                                              start_state=last_fsm_state, )
